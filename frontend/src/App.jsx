@@ -111,7 +111,7 @@ export default function App() {
 
             <div>
               <label style={s.label}>
-                Keywords — ek line mein ek keyword ({keywords.length} keyword{keywords.length !== 1 ? "s" : ""})
+                Keywords — ONE LINE 1 KEYWORD ({keywords.length} keyword{keywords.length !== 1 ? "s" : ""})
               </label>
               <textarea
                 value={keywordsText}
