@@ -1,6 +1,6 @@
 """
 Google Rank Checker - FastAPI Backend
-Multiple Keywords Support
+Multiple Keywords + Retry Logic
 """
 
 import asyncio
@@ -27,13 +27,15 @@ jobs = {}
 
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
 ]
 
 
 class CheckRequest(BaseModel):
     site: str
-    keywords: List[str]        # ← ab list hai single string nahi
+    keywords: List[str]
     max_pages: Optional[int] = 10
 
 
@@ -45,7 +47,6 @@ def root():
 @app.post("/check-rank")
 async def check_rank(req: CheckRequest):
     job_id = str(uuid.uuid4())[:8]
-    # keywords clean karo — empty lines hata do
     keywords = [k.strip() for k in req.keywords if k.strip()]
     jobs[job_id] = {
         "id": job_id,
@@ -57,7 +58,7 @@ async def check_rank(req: CheckRequest):
         "current_keyword": "",
         "current_keyword_index": 0,
         "total_keywords": len(keywords),
-        "results": [],       # ← har keyword ka result yahan aayega
+        "results": [],
         "started_at": datetime.now().isoformat(),
     }
     asyncio.create_task(run_rank_check(job_id, req.site, keywords, req.max_pages))
@@ -88,7 +89,8 @@ async def extract_results(page) -> list:
                 if not href or not href.startswith("http"):
                     continue
                 skip = ["google.com", "google.co", "youtube.com", "accounts.google",
-                        "support.google", "maps.google", "play.google", "policies.google"]
+                        "support.google", "maps.google", "play.google", "policies.google",
+                        "webcache.google", "translate.google"]
                 if any(s in href for s in skip):
                     continue
                 title = "N/A"
@@ -117,8 +119,23 @@ async def extract_results(page) -> list:
     return unique
 
 
+async def is_captcha_page(page) -> bool:
+    """Check karo CAPTCHA ya block page hai"""
+    try:
+        content = await page.content()
+        title = await page.title()
+        return (
+            "unusual traffic" in content.lower() or
+            "recaptcha" in content.lower() or
+            "captcha" in content.lower() or
+            "blocked" in title.lower() or
+            "sorry" in title.lower()
+        )
+    except Exception:
+        return False
+
+
 async def check_single_keyword(page, site: str, keyword: str, max_pages: int, job: dict) -> dict:
-    """Ek keyword ke liye rank check"""
     result = {
         "keyword": keyword,
         "rank": None,
@@ -131,61 +148,99 @@ async def check_single_keyword(page, site: str, keyword: str, max_pages: int, jo
         "found": False,
     }
 
-    try:
-        search_url = (
-            f"https://www.google.com/search"
-            f"?q={keyword.replace(' ', '+')}"
-            f"&gl=us&hl=en&num=10&pws=0"
-        )
+    MAX_RETRIES = 2
 
-        await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(random.uniform(3, 5))
+    for attempt in range(MAX_RETRIES):
+        try:
+            if attempt > 0:
+                job["progress"] = f"[{keyword}] Retry {attempt}/{MAX_RETRIES-1} — thoda wait kar raha hoon..."
+                await asyncio.sleep(random.uniform(8, 12))
 
-        overall_rank = 0
+            search_url = (
+                f"https://www.google.com/search"
+                f"?q={keyword.replace(' ', '+')}"
+                f"&gl=us&hl=en&num=10&pws=0"
+            )
 
-        for page_num in range(1, max_pages + 1):
-            job["progress"] = f"[{keyword}] Page {page_num}/{max_pages} scan ho raha hai... (scanned: {overall_rank})"
+            await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(random.uniform(4, 6))
 
-            if page_num > 1:
-                try:
-                    next_btn = (
-                        await page.query_selector("a#pnnext") or
-                        await page.query_selector("a[aria-label='Next page']")
-                    )
-                    if not next_btn:
+            # CAPTCHA check
+            if await is_captcha_page(page):
+                job["progress"] = f"[{keyword}] CAPTCHA detected — wait karke retry kar raha hoon..."
+                await asyncio.sleep(random.uniform(10, 15))
+                # Dusre URL se try karo
+                await page.goto("https://www.google.com", wait_until="domcontentloaded")
+                await asyncio.sleep(random.uniform(3, 5))
+                await page.goto(search_url, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(random.uniform(4, 6))
+
+            overall_rank = 0
+            found_this_attempt = False
+
+            for page_num in range(1, max_pages + 1):
+                job["progress"] = f"[{keyword}] Page {page_num}/{max_pages} scan ho raha hai... (scanned: {overall_rank})"
+
+                if page_num > 1:
+                    try:
+                        next_btn = (
+                            await page.query_selector("a#pnnext") or
+                            await page.query_selector("a[aria-label='Next page']") or
+                            await page.query_selector("a[aria-label='Next']")
+                        )
+                        if not next_btn:
+                            break
+                        await next_btn.click()
+                        await asyncio.sleep(random.uniform(3, 5))
+
+                        if await is_captcha_page(page):
+                            job["progress"] = f"[{keyword}] CAPTCHA on page {page_num} — stopping"
+                            break
+
+                    except Exception:
                         break
-                    await next_btn.click()
-                    await asyncio.sleep(random.uniform(3, 5))
-                except Exception:
+
+                items = await extract_results(page)
+
+                # Agar 0 results aaye — page properly load nahi hua
+                if not items and page_num == 1:
+                    job["progress"] = f"[{keyword}] 0 results on page 1 — retrying..."
                     break
 
-            items = await extract_results(page)
-            page_rank = 0
+                page_rank = 0
+                for item in items:
+                    page_rank    += 1
+                    overall_rank += 1
 
-            for item in items:
-                page_rank    += 1
-                overall_rank += 1
+                    if site.lower() in item["href"].lower():
+                        result.update({
+                            "rank":          overall_rank,
+                            "page":          page_num,
+                            "position":      page_rank,
+                            "url":           item["href"],
+                            "title":         item["title"],
+                            "total_scanned": overall_rank,
+                            "status":        "Found",
+                            "found":         True,
+                        })
+                        found_this_attempt = True
+                        break
 
-                if site.lower() in item["href"].lower():
-                    result.update({
-                        "rank":          overall_rank,
-                        "page":          page_num,
-                        "position":      page_rank,
-                        "url":           item["href"],
-                        "title":         item["title"],
-                        "total_scanned": overall_rank,
-                        "status":        "Found",
-                        "found":         True,
-                    })
+                if found_this_attempt:
                     return result
 
-            result["total_scanned"] = overall_rank
-            await asyncio.sleep(random.uniform(2, 4))
+                result["total_scanned"] = overall_rank
+                await asyncio.sleep(random.uniform(2, 4))
 
-        result["status"] = f"Not Found (checked {overall_rank})"
+            # Agar results mile the (bhale hi site nahi mili) — retry mat karo
+            if overall_rank > 0:
+                result["status"] = f"Not Found (checked {overall_rank})"
+                return result
 
-    except Exception as e:
-        result["status"] = f"Error: {str(e)}"
+        except Exception as e:
+            result["status"] = f"Error: {str(e)}"
+            if attempt < MAX_RETRIES - 1:
+                await asyncio.sleep(random.uniform(5, 8))
 
     return result
 
@@ -200,8 +255,13 @@ async def run_rank_check(job_id: str, site: str, keywords: list, max_pages: int)
             job["progress"] = "Browser launch ho raha hai..."
             browser = await p.chromium.launch(
                 headless=True,
-                args=["--no-sandbox", "--disable-blink-features=AutomationControlled",
-                      "--disable-dev-shm-usage", "--disable-gpu"],
+                args=[
+                    "--no-sandbox",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                    "--window-size=1366,768",
+                ],
             )
 
             context = await browser.new_context(
@@ -211,16 +271,26 @@ async def run_rank_check(job_id: str, site: str, keywords: list, max_pages: int)
                 timezone_id="America/New_York",
                 geolocation={"latitude": 40.7128, "longitude": -74.0060},
                 permissions=["geolocation"],
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                }
             )
 
             await context.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
                 window.chrome = { runtime: {} };
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
             """)
 
             page = await context.new_page()
 
-            # Har keyword ek ek karke check karo
+            # Pehle Google home kholo — natural lagta hai
+            job["progress"] = "Google USA open ho raha hai..."
+            await page.goto("https://www.google.com", wait_until="domcontentloaded")
+            await asyncio.sleep(random.uniform(2, 4))
+
             for i, keyword in enumerate(keywords):
                 job["current_keyword"]       = keyword
                 job["current_keyword_index"] = i + 1
@@ -229,14 +299,16 @@ async def run_rank_check(job_id: str, site: str, keywords: list, max_pages: int)
                 result = await check_single_keyword(page, site, keyword, max_pages, job)
                 job["results"].append(result)
 
-                # Keywords ke beech delay (last keyword ke baad nahi)
+                # Keywords ke beech delay — last keyword ke baad nahi
                 if i < len(keywords) - 1:
-                    await asyncio.sleep(random.uniform(4, 7))
+                    wait = random.uniform(6, 10)
+                    job["progress"] = f"Next keyword se pehle {wait:.0f}s wait..."
+                    await asyncio.sleep(wait)
 
             await browser.close()
 
-            job["status"]   = "done"
-            job["progress"] = "Completed"
+            job["status"]          = "done"
+            job["progress"]        = "Completed"
             job["current_keyword"] = ""
 
     except Exception as e:
