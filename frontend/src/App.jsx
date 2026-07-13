@@ -4,7 +4,7 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 export default function App() {
   const [site, setSite] = useState("pixelglobalit.com");
-  const [keyword, setKeyword] = useState("");
+  const [keywordsText, setKeywordsText] = useState("");
   const [maxPages, setMaxPages] = useState(10);
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
@@ -12,8 +12,10 @@ export default function App() {
   const [history, setHistory] = useState([]);
   const pollRef = useRef(null);
 
+  const keywords = keywordsText.split("\n").map(k => k.trim()).filter(Boolean);
+
   const startCheck = async () => {
-    if (!keyword.trim()) return;
+    if (!keywords.length) return;
     setLoading(true);
     setJob(null);
     setJobId(null);
@@ -22,7 +24,7 @@ export default function App() {
       const res = await fetch(`${API}/check-rank`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ site, keyword, max_pages: maxPages }),
+        body: JSON.stringify({ site, keywords, max_pages: maxPages }),
       });
       const data = await res.json();
       setJobId(data.job_id);
@@ -32,7 +34,6 @@ export default function App() {
     }
   };
 
-  // Poll job status
   useEffect(() => {
     if (!jobId) return;
     pollRef.current = setInterval(async () => {
@@ -43,8 +44,8 @@ export default function App() {
         if (data.status === "done" || data.status === "error") {
           clearInterval(pollRef.current);
           setLoading(false);
-          if (data.status === "done" && data.result) {
-            setHistory(prev => [{ ...data, checked_at: new Date().toLocaleTimeString() }, ...prev.slice(0, 9)]);
+          if (data.status === "done") {
+            setHistory(prev => [{ ...data, checked_at: new Date().toLocaleTimeString() }, ...prev.slice(0, 4)]);
           }
         }
       } catch (e) {}
@@ -59,145 +60,181 @@ export default function App() {
     return "#f97316";
   };
 
+  const s = {
+    page: { minHeight: "100vh", background: "#0a0a0f", color: "#e2e8f0", fontFamily: "'Inter', sans-serif" },
+    header: { background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)", padding: "20px 32px", borderBottom: "1px solid #1e3a5f" },
+    headerInner: { maxWidth: 860, margin: "0 auto", display: "flex", alignItems: "center", gap: 12 },
+    icon: { width: 40, height: 40, background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 },
+    wrap: { maxWidth: 860, margin: "0 auto", padding: "28px 20px" },
+    card: { background: "#111827", border: "1px solid #1f2937", borderRadius: 16, padding: 24, marginBottom: 20 },
+    label: { display: "block", fontSize: 11, color: "#64748b", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 },
+    input: { width: "100%", background: "#1f2937", border: "1px solid #374151", borderRadius: 8, padding: "10px 14px", color: "#e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box" },
+    textarea: { width: "100%", background: "#1f2937", border: "1px solid #374151", borderRadius: 8, padding: "10px 14px", color: "#e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box", resize: "vertical", minHeight: 110, lineHeight: 1.6 },
+    btn: (active) => ({
+      flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid", cursor: "pointer", fontSize: 13, fontWeight: 600,
+      background: active ? "#3b82f6" : "#1f2937",
+      borderColor: active ? "#3b82f6" : "#374151",
+      color: active ? "#fff" : "#94a3b8"
+    }),
+    runBtn: (dis) => ({
+      width: "100%", padding: "13px", borderRadius: 10, border: "none",
+      cursor: dis ? "not-allowed" : "pointer", fontSize: 15, fontWeight: 700,
+      background: dis ? "#1f2937" : "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+      color: dis ? "#4b5563" : "#fff"
+    }),
+  };
+
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0f", color: "#e2e8f0", fontFamily: "'Inter', sans-serif", padding: "0" }}>
-      
-      {/* Header */}
-      <div style={{ background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)", padding: "24px 32px", borderBottom: "1px solid #1e3a5f" }}>
-        <div style={{ maxWidth: 800, margin: "0 auto", display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 40, height: 40, background: "linear-gradient(135deg, #3b82f6, #8b5cf6)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🔍</div>
+    <div style={s.page}>
+      <div style={s.header}>
+        <div style={s.headerInner}>
+          <div style={s.icon}>🔍</div>
           <div>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#fff" }}>Google USA Rank Checker</h1>
-            <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>PixelGlobal Internal Tool · USA Region</p>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#fff" }}>Google USA Rank Checker</h1>
+            <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>PixelGlobal Internal Tool · Multiple Keywords · USA Region</p>
           </div>
         </div>
       </div>
 
-      <div style={{ maxWidth: 800, margin: "0 auto", padding: "32px 24px" }}>
+      <div style={s.wrap}>
 
         {/* Input Card */}
-        <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 16, padding: 28, marginBottom: 24 }}>
-          <h2 style={{ margin: "0 0 20px", fontSize: 16, fontWeight: 600, color: "#94a3b8" }}>🎯 Rank Check Setup</h2>
-          
-          <div style={{ display: "grid", gap: 16 }}>
+        <div style={s.card}>
+          <h2 style={{ margin: "0 0 18px", fontSize: 15, fontWeight: 600, color: "#94a3b8" }}>🎯 Setup</h2>
+          <div style={{ display: "grid", gap: 14 }}>
+
             <div>
-              <label style={{ display: "block", fontSize: 12, color: "#64748b", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Target Domain</label>
-              <input
-                value={site}
-                onChange={e => setSite(e.target.value)}
-                placeholder="pixelglobalit.com"
-                style={{ width: "100%", background: "#1f2937", border: "1px solid #374151", borderRadius: 8, padding: "10px 14px", color: "#e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
-              />
+              <label style={s.label}>Target Domain</label>
+              <input value={site} onChange={e => setSite(e.target.value)}
+                placeholder="pixelglobalit.com" style={s.input} />
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: 12, color: "#64748b", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Keyword</label>
-              <input
-                value={keyword}
-                onChange={e => setKeyword(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && !loading && startCheck()}
-                placeholder="pixel global marketing"
-                style={{ width: "100%", background: "#1f2937", border: "1px solid #374151", borderRadius: 8, padding: "10px 14px", color: "#e2e8f0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+              <label style={s.label}>
+                Keywords — ek line mein ek keyword ({keywords.length} keyword{keywords.length !== 1 ? "s" : ""})
+              </label>
+              <textarea
+                value={keywordsText}
+                onChange={e => setKeywordsText(e.target.value)}
+                placeholder={"pixel global\npixel global marketing\npixelglobal seo\nweb design agency"}
+                style={s.textarea}
               />
+              {/* Preview chips */}
+              {keywords.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  {keywords.map((k, i) => (
+                    <span key={i} style={{ background: "#1f2937", border: "1px solid #374151", borderRadius: 20, padding: "3px 10px", fontSize: 12, color: "#94a3b8" }}>
+                      {k}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div>
-              <label style={{ display: "block", fontSize: 12, color: "#64748b", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Pages to scan (1 page = 10 results)</label>
+              <label style={s.label}>Pages to scan per keyword</label>
               <div style={{ display: "flex", gap: 8 }}>
                 {[5, 10, 20, 50].map(p => (
-                  <button key={p} onClick={() => setMaxPages(p)}
-                    style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "1px solid", cursor: "pointer", fontSize: 13, fontWeight: 600, transition: "all 0.2s",
-                      background: maxPages === p ? "#3b82f6" : "#1f2937",
-                      borderColor: maxPages === p ? "#3b82f6" : "#374151",
-                      color: maxPages === p ? "#fff" : "#94a3b8"
-                    }}>
-                    {p} <span style={{ fontSize: 11, opacity: 0.7 }}>({p*10})</span>
+                  <button key={p} onClick={() => setMaxPages(p)} style={s.btn(maxPages === p)}>
+                    {p} <span style={{ fontSize: 11, opacity: 0.7 }}>({p * 10})</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            <button onClick={startCheck} disabled={loading || !keyword.trim()}
-              style={{ width: "100%", padding: "14px", borderRadius: 10, border: "none", cursor: loading ? "not-allowed" : "pointer", fontSize: 15, fontWeight: 700,
-                background: loading ? "#1f2937" : "linear-gradient(135deg, #3b82f6, #8b5cf6)",
-                color: loading ? "#4b5563" : "#fff", transition: "all 0.2s"
-              }}>
-              {loading ? "⏳ Checking..." : "🚀 Check Ranking"}
+            <button onClick={startCheck} disabled={loading || !keywords.length} style={s.runBtn(loading || !keywords.length)}>
+              {loading
+                ? `⏳ Checking... (${job?.current_keyword_index || 0}/${job?.total_keywords || keywords.length})`
+                : `🚀 Check ${keywords.length} Keyword${keywords.length !== 1 ? "s" : ""}`}
             </button>
           </div>
         </div>
 
-        {/* Progress / Result */}
-        {(loading || job) && (
-          <div style={{ background: "#111827", border: `1px solid ${job?.status === "done" && job?.result?.found ? "#166534" : job?.status === "error" ? "#7f1d1d" : "#1f2937"}`, borderRadius: 16, padding: 28, marginBottom: 24 }}>
-            
-            {loading && (
-              <div style={{ textAlign: "center", padding: "20px 0" }}>
-                <div style={{ fontSize: 36, marginBottom: 12, animation: "spin 1s linear infinite", display: "inline-block" }}>⏳</div>
-                <p style={{ color: "#94a3b8", margin: 0, fontSize: 14 }}>{job?.progress || "Starting..."}</p>
-                <p style={{ color: "#4b5563", margin: "8px 0 0", fontSize: 12 }}>Job ID: {jobId}</p>
-              </div>
-            )}
-
-            {!loading && job?.status === "done" && job?.result && (
+        {/* Progress */}
+        {loading && job && (
+          <div style={{ ...s.card, borderColor: "#1e3a5f" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+              <div style={{ fontSize: 22 }}>⏳</div>
               <div>
-                {job.result.found ? (
-                  <div style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: 48, marginBottom: 8 }}>🏆</div>
-                    <div style={{ fontSize: 56, fontWeight: 800, color: getRankColor(job.result.rank), lineHeight: 1 }}>#{job.result.rank}</div>
-                    <div style={{ color: "#94a3b8", marginTop: 4, fontSize: 14 }}>Google USA Ranking</div>
-                    
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 24 }}>
-                      {[
-                        { label: "Page", value: job.result.page },
-                        { label: "Position on Page", value: job.result.position },
-                        { label: "Total Scanned", value: job.result.total_scanned },
-                      ].map(s => (
-                        <div key={s.label} style={{ background: "#1f2937", borderRadius: 10, padding: "14px 10px", textAlign: "center" }}>
-                          <div style={{ fontSize: 22, fontWeight: 700, color: "#e2e8f0" }}>{s.value}</div>
-                          <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{s.label}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div style={{ background: "#1f2937", borderRadius: 10, padding: 14, marginTop: 16, textAlign: "left" }}>
-                      <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>Ranked URL</div>
-                      <a href={job.result.url} target="_blank" rel="noreferrer" style={{ color: "#3b82f6", fontSize: 13, wordBreak: "break-all" }}>{job.result.url}</a>
-                      <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 6 }}>{job.result.title}</div>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ textAlign: "center", padding: "20px 0" }}>
-                    <div style={{ fontSize: 48, marginBottom: 12 }}>❌</div>
-                    <div style={{ color: "#ef4444", fontSize: 20, fontWeight: 700 }}>Not Ranked</div>
-                    <div style={{ color: "#64748b", marginTop: 8, fontSize: 14 }}>{job.result.message || `Top ${job.result.total_scanned} results mein nahi mila`}</div>
-                  </div>
-                )}
+                <div style={{ fontSize: 14, color: "#e2e8f0", fontWeight: 600 }}>
+                  Keyword {job.current_keyword_index}/{job.total_keywords}: <span style={{ color: "#3b82f6" }}>{job.current_keyword}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{job.progress}</div>
               </div>
-            )}
-
-            {!loading && job?.status === "error" && (
-              <div style={{ textAlign: "center", color: "#ef4444" }}>
-                <div style={{ fontSize: 36 }}>⚠️</div>
-                <div style={{ marginTop: 8 }}>Error: {job?.progress}</div>
+            </div>
+            {/* Progress bar */}
+            <div style={{ background: "#1f2937", borderRadius: 99, height: 6, overflow: "hidden" }}>
+              <div style={{
+                height: "100%", borderRadius: 99, transition: "width 0.4s",
+                background: "linear-gradient(90deg, #3b82f6, #8b5cf6)",
+                width: `${((job.current_keyword_index - 1) / job.total_keywords) * 100}%`
+              }} />
+            </div>
+            {/* Partial results */}
+            {job.results?.length > 0 && (
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>Abhi tak ke results:</div>
+                {job.results.map((r, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", background: "#1f2937", borderRadius: 8, padding: "8px 12px", marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, color: "#94a3b8" }}>{r.keyword}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: getRankColor(r.rank) }}>
+                      {r.found ? `#${r.rank}` : "N/F"}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
         )}
 
-        {/* History */}
-        {history.length > 0 && (
-          <div style={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 16, padding: 24 }}>
-            <h3 style={{ margin: "0 0 16px", fontSize: 14, color: "#94a3b8", fontWeight: 600 }}>📋 Recent Checks</h3>
+        {/* Final Results */}
+        {!loading && job?.status === "done" && job?.results?.length > 0 && (
+          <div style={s.card}>
+            <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 600, color: "#94a3b8" }}>
+              📊 Results — {job.results.filter(r => r.found).length}/{job.results.length} Ranked
+            </h3>
+
+            {/* Summary stats */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {[
+                { label: "Total Keywords", value: job.results.length, color: "#e2e8f0" },
+                { label: "Ranked", value: job.results.filter(r => r.found).length, color: "#22c55e" },
+                { label: "Not Found", value: job.results.filter(r => !r.found).length, color: "#ef4444" },
+              ].map(s => (
+                <div key={s.label} style={{ background: "#1f2937", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Per keyword result */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {history.map((h, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#1f2937", borderRadius: 10, padding: "12px 16px" }}>
-                  <div>
-                    <div style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 500 }}>{h.keyword}</div>
-                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{h.site} · {h.checked_at}</div>
-                  </div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: getRankColor(h.result?.rank) }}>
-                    {h.result?.found ? `#${h.result.rank}` : "N/F"}
+              {job.results.map((r, i) => (
+                <div key={i} style={{
+                  background: "#1f2937", borderRadius: 12, padding: "14px 16px",
+                  borderLeft: `3px solid ${getRankColor(r.rank)}`
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0" }}>{r.keyword}</div>
+                      {r.found ? (
+                        <>
+                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                            Page {r.page} · Position {r.position} · {r.total_scanned} results scanned
+                          </div>
+                          <a href={r.url} target="_blank" rel="noreferrer"
+                            style={{ fontSize: 12, color: "#3b82f6", display: "block", marginTop: 4, wordBreak: "break-all" }}>
+                            {r.url?.slice(0, 70)}{r.url?.length > 70 ? "..." : ""}
+                          </a>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>{r.status}</div>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: getRankColor(r.rank), marginLeft: 16, flexShrink: 0 }}>
+                      {r.found ? `#${r.rank}` : "N/F"}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -205,9 +242,34 @@ export default function App() {
           </div>
         )}
 
-      </div>
+        {/* Error */}
+        {!loading && job?.status === "error" && (
+          <div style={{ ...s.card, borderColor: "#7f1d1d", textAlign: "center", color: "#ef4444" }}>
+            ⚠️ Error: {job.progress}
+          </div>
+        )}
 
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        {/* History */}
+        {history.length > 0 && (
+          <div style={s.card}>
+            <h3 style={{ margin: "0 0 14px", fontSize: 13, color: "#64748b", fontWeight: 600 }}>📋 Recent Checks</h3>
+            {history.map((h, i) => (
+              <div key={i} style={{ background: "#1f2937", borderRadius: 10, padding: "10px 14px", marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: "#e2e8f0" }}>{h.site}</div>
+                    <div style={{ fontSize: 11, color: "#64748b" }}>{h.total_keywords} keywords · {h.checked_at}</div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "#22c55e", fontWeight: 700 }}>
+                    {h.results?.filter(r => r.found).length}/{h.results?.length} ranked
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+      </div>
     </div>
   );
 }
