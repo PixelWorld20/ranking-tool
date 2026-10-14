@@ -55,3 +55,4 @@ npm run dev
 | POST | /check-rank | Rank check job start karo |
 | GET | /status/{job_id} | Job status aur result lo |
 | GET | /jobs | Saare jobs ki list |
+"# ranking-tool" 
